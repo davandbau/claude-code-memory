@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import { runInit } from "./commands/init.js";
 import { runUninstall } from "./commands/uninstall.js";
 import { runStatus } from "./commands/status.js";
@@ -12,7 +14,14 @@ import { runPromptSubmit } from "./hooks/prompt-submit.js";
 import { resolveCcmBin } from "./core/settings.js";
 import { err } from "./core/logger.js";
 
-const VERSION = "0.2.0";
+const VERSION = (() => {
+  try {
+    const pkgPath = fileURLToPath(new URL("../package.json", import.meta.url));
+    return JSON.parse(fs.readFileSync(pkgPath, "utf8")).version;
+  } catch {
+    return "0.0.0";
+  }
+})();
 
 function usage() {
   process.stdout.write(`claude-code-memory v${VERSION}

@@ -4,6 +4,31 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] — 2026-04-21
+
+### Fixed
+
+- **CRITICAL**: `parseCron` treated `0` as unset, so `"0 4 * * *"` resolved to 04:17 instead of 04:00. Zero is now accepted for both minute and hour.
+- **CRITICAL**: watchdog, puller, and `ccm sync` hardcoded `main`, ignoring `cfg.branch`. Any user whose remote default is `master` or another branch had a broken sync loop. All three now read from config.
+- **HIGH**: hook dedup matched on exact command string, so upgrading npm globals (different install path) or switching between dev and prod left stale hook entries pointing at old paths. Dedup now matches by intent — any `… hook session-start` / `… hook prompt-submit` is treated as ours regardless of the prefix path.
+- **HIGH**: `resolveCcmBin()` could return a relative path in dev contexts and write it into `~/.claude/settings.json`. Now enforces an absolute resolve.
+- **MEDIUM**: the 3-second "kill timer" in the SessionStart hook was a no-op (timer unref'd, parent exited before it fired). Removed the dead code; the background pull is detached and already non-blocking.
+- **MEDIUM**: `render()` for launchd plists didn't XML-escape substituted values, so paths containing `&`, `<`, `>`, `"`, or `'` produced invalid plist XML and `launchctl load` failures. Now escapes all five.
+- **MEDIUM**: `settings.json` writes were non-atomic; a crash mid-write could corrupt it. Now writes to a temp file and atomically renames.
+- **MEDIUM**: `runClaudePrompt` used `spawnSync`, which blocks SIGINT forwarding. Switched to `spawn` with explicit SIGINT/SIGTERM forwarding, streaming output, a 5s grace before SIGKILL, and no fixed `maxBuffer`.
+- **MEDIUM**: the forbidden-file guard matched on `path.basename`, which would incorrectly revert legitimate archival of feedback files into nested directories. Now matches at the repo root only.
+
+### Added
+
+- Dry-run (`ccm maintain --dry-run`) no longer acquires the sync lock and now prints `branch` and `claude CLI` availability.
+- Unit tests for `parseCron`, `isForbiddenPath`, hook intent matcher, XML escape.
+
+### Changed
+
+- Logger switched to ASCII tags (`[ok]`, `[warn]`, `[err]`) instead of Unicode glyphs.
+- CLI version now read from `package.json` at runtime — no more out-of-sync string literals.
+- Dropped `--max-turns` from `claude -p` invocation; Claude Code's defaults apply.
+
 ## [0.2.0] — 2026-04-21
 
 ### Added

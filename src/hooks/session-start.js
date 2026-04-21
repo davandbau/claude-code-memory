@@ -36,14 +36,14 @@ export function runSessionStart(ccmBin) {
     return;
   }
 
-  // Kick a background pull; capped at 3s so we never stall session start.
+  // Kick a detached background pull. It runs independently of this hook; the
+  // hook returns as soon as we emit JSON below, never stalling session start.
   const p = spawn(process.execPath, [ccmBin, "pull"], {
     detached: true,
     stdio: "ignore",
     env: process.env,
   });
   p.unref();
-  setTimeout(() => p.kill(), 3000).unref?.();
 
   // Seed last-notified SHA for UserPromptSubmit diffing.
   fs.mkdirSync(stateDir(), { recursive: true });

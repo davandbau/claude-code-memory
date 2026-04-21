@@ -13,7 +13,9 @@ import { resolveCcmBin } from "../core/settings.js";
 import { err, heading, info, ok, warn } from "../core/logger.js";
 
 const HOSTNAME = os.hostname().split(".")[0];
-const FORBIDDEN_PATTERNS = [/^user_profile\.md$/, /^feedback_.*\.md$/];
+// Match at the repo root only; an archived feedback file (e.g. `archive/feedback_x.md`)
+// is legitimate movement and should not be reverted.
+const FORBIDDEN_PATTERNS = [/^user_profile\.md$/, /^feedback_[^/]*\.md$/];
 
 function runId() {
   const ts = new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 12);
@@ -73,6 +75,10 @@ function writeLastRun() {
   );
 }
 
+export function isForbiddenPath(relPath) {
+  return FORBIDDEN_PATTERNS.some((re) => re.test(relPath));
+}
+
 function revertForbiddenChanges(repo) {
   const r = spawnSync(
     "git",
@@ -80,9 +86,7 @@ function revertForbiddenChanges(repo) {
     { encoding: "utf8" }
   );
   const staged = (r.stdout || "").split("\n").filter(Boolean);
-  const toRevert = staged.filter((f) =>
-    FORBIDDEN_PATTERNS.some((re) => re.test(path.basename(f)))
-  );
+  const toRevert = staged.filter((f) => isForbiddenPath(f));
   if (!toRevert.length) return [];
   for (const f of toRevert) {
     spawnSync("git", ["-C", repo, "restore", "--staged", f], { stdio: "ignore" });
@@ -144,6 +148,24 @@ export async function runMaintain(args) {
     }
   }
 
+  // Dry-run is read-only and shouldn't block on the sync lock.
+  if (flags.dryRun) {
+    heading("claude-code-memory maintenance (dry-run)");
+    ensureMaintenanceAssets(repo);
+    const rid = runId();
+    const promptFile = cfg.maintenance.promptFile
+      ? path.resolve(repo, cfg.maintenance.promptFile)
+      : path.join(repo, "maintenance", "prompt.md");
+    info(`run id:      ${rid}`);
+    info(`prompt file: ${promptFile}`);
+    info(`model:       ${cfg.maintenance.model || "(claude default)"}`);
+    info(`repo:        ${repo}`);
+    info(`branch:      ${cfg.branch}`);
+    info(`claude CLI:  ${claudeInstalled() ? "found" : "NOT FOUND — install Claude Code"}`);
+    info("dry-run — not calling claude");
+    return;
+  }
+
   if (!claudeInstalled()) {
     err("'claude' CLI not found on PATH. Install Claude Code to enable maintenance.");
     err("https://docs.claude.com/en/docs/claude-code/overview");
@@ -175,18 +197,9 @@ export async function runMaintain(args) {
       .replaceAll("{{TODAY}}", today)
       .replaceAll("{{HOSTNAME}}", HOSTNAME);
 
-    if (flags.dryRun) {
-      info(`run id:      ${rid}`);
-      info(`prompt file: ${promptFile}`);
-      info(`model:       ${cfg.maintenance.model || "(claude default)"}`);
-      info(`repo:        ${repo}`);
-      info("dry-run — not calling claude");
-      return;
-    }
-
     info(`run ${rid} — calling claude -p (timeout ${cfg.maintenance.timeoutSeconds}s)`);
     appendLog(`run ${rid} start`);
-    const result = runClaudePrompt({
+    const result = await runClaudePrompt({
       prompt,
       cwd: repo,
       addDirs: [repo],
@@ -195,7 +208,7 @@ export async function runMaintain(args) {
       onLog: (stream, chunk) => {
         fs.appendFileSync(
           path.join(logsDir(), "maintenance.log"),
-          `--- claude ${stream} ---\n${chunk}\n`
+          chunk.endsWith("\n") ? chunk : chunk + "\n"
         );
       },
     });
@@ -249,10 +262,12 @@ export async function runMaintain(args) {
   }
 }
 
-function parseCron(expr) {
+export function parseCron(expr) {
   const parts = (expr || "17 3 * * *").trim().split(/\s+/);
-  const minute = parseInt(parts[0], 10) || 17;
-  const hour = parseInt(parts[1], 10) || 3;
+  const m = Number(parts[0]);
+  const h = Number(parts[1]);
+  const minute = Number.isInteger(m) && m >= 0 && m < 60 ? m : 17;
+  const hour = Number.isInteger(h) && h >= 0 && h < 24 ? h : 3;
   return [hour, minute];
 }
 

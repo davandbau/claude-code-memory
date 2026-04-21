@@ -17,13 +17,27 @@ const LABELS = {
 
 const MAINTAIN_LABEL = "com.claude-code-memory.maintain";
 
+function escapeXml(v) {
+  return String(v)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
 function render(tplPath, substitutions) {
   let content = fs.readFileSync(tplPath, "utf8");
+  const isPlist = tplPath.endsWith(".plist");
   for (const [k, v] of Object.entries(substitutions)) {
-    content = content.replaceAll(`{{${k}}}`, v);
+    const value = isPlist ? escapeXml(v) : String(v);
+    content = content.replaceAll(`{{${k}}}`, value);
   }
   return content;
 }
+
+// Exported for tests.
+export const _internal = { escapeXml };
 
 function nodeBin() {
   return process.execPath;

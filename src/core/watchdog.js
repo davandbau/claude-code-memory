@@ -18,7 +18,7 @@ function logLine(line) {
 
 const HOSTNAME = os.hostname().split(".")[0];
 
-async function sync() {
+async function sync(branch) {
   const acquired = await acquire({ waitMs: 20_000 });
   if (!acquired) {
     logLine("lock busy, skipping");
@@ -26,7 +26,7 @@ async function sync() {
   }
   try {
     git(["fetch", "origin"]);
-    const pull = git(["pull", "--rebase", "--autostash", "origin", "main"]);
+    const pull = git(["pull", "--rebase", "--autostash", "origin", branch]);
     if (pull.code !== 0) logLine(`pull non-zero (${pull.code}): ${pull.stderr}`);
     git(["add", "-A"]);
     if (!hasStaged()) return;
@@ -36,7 +36,7 @@ async function sync() {
       logLine(`commit failed: ${commit.stderr}`);
       return;
     }
-    const push = git(["push", "origin", "main"]);
+    const push = git(["push", "origin", branch]);
     if (push.code !== 0) {
       logLine(`push failed: ${push.stderr}`);
       return;
@@ -91,7 +91,7 @@ export function runWatchdog() {
     if (!pending) return;
     if (Date.now() - lastEvent < debounceMs) return;
     pending = false;
-    try { await sync(); } catch (e) { logLine(`sync crashed: ${e.message}`); }
+    try { await sync(cfg.branch); } catch (e) { logLine(`sync crashed: ${e.message}`); }
   }, 1000);
 
   const shutdown = async (sig) => {

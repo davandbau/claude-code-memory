@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 
 export function claudeInstalled() {
   const r = spawnSync("sh", ["-c", "command -v claude"], { encoding: "utf8" });
@@ -6,10 +6,12 @@ export function claudeInstalled() {
 }
 
 /**
- * Run `claude -p` headlessly. Returns { code, stdout, stderr }.
- * Blocks until completion or timeout.
+ * Run `claude -p` headlessly, returning a promise of { code, stdout, stderr, timedOut }.
  *
- * The Claude CLI uses the user's OAuth session (Claude Code MAX). No API key needed.
+ * - Uses the user's OAuth session (Claude Code MAX). No API key.
+ * - Streams stdout/stderr through onLog so logs are captured incrementally.
+ * - Kills the child cleanly on timeout (SIGTERM, then SIGKILL after 5s grace).
+ * - Forwards SIGINT/SIGTERM from the parent to the child so Ctrl+C works.
  */
 export function runClaudePrompt({
   prompt,
@@ -18,40 +20,81 @@ export function runClaudePrompt({
   timeoutMs = 600_000,
   model = null,
   permissionMode = "acceptEdits",
-  maxTurns = 80,
   onLog = null,
 }) {
-  const args = [
-    "-p",
-    "--permission-mode", permissionMode,
-    "--max-turns", String(maxTurns),
-  ];
-  for (const d of addDirs) {
-    args.push("--add-dir", d);
-  }
-  if (model) {
-    args.push("--model", model);
-  }
-  // Prompt comes last as a positional arg.
-  args.push(prompt);
+  return new Promise((resolve) => {
+    const args = [
+      "-p",
+      "--permission-mode", permissionMode,
+    ];
+    for (const d of addDirs) {
+      args.push("--add-dir", d);
+    }
+    if (model) {
+      args.push("--model", model);
+    }
+    // Prompt is passed as argv, not shell-expanded, so no injection risk.
+    args.push(prompt);
 
-  const r = spawnSync("claude", args, {
-    cwd,
-    encoding: "utf8",
-    timeout: timeoutMs,
-    maxBuffer: 50 * 1024 * 1024,
-    env: process.env,
+    const child = spawn("claude", args, {
+      cwd,
+      env: process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+    let timedOut = false;
+    let killTimer = null;
+
+    const hardKill = setTimeout(() => {}, 0); // placeholder
+    clearTimeout(hardKill);
+
+    const onTimeout = () => {
+      timedOut = true;
+      try { child.kill("SIGTERM"); } catch {}
+      killTimer = setTimeout(() => {
+        try { child.kill("SIGKILL"); } catch {}
+      }, 5000);
+      killTimer.unref?.();
+    };
+    const timer = setTimeout(onTimeout, timeoutMs);
+    timer.unref?.();
+
+    const forwardSig = (sig) => { try { child.kill(sig); } catch {} };
+    process.on("SIGINT", forwardSig);
+    process.on("SIGTERM", forwardSig);
+
+    child.stdout.on("data", (buf) => {
+      const s = buf.toString();
+      stdout += s;
+      onLog?.("stdout", s);
+    });
+    child.stderr.on("data", (buf) => {
+      const s = buf.toString();
+      stderr += s;
+      onLog?.("stderr", s);
+    });
+
+    child.on("error", (e) => {
+      clearTimeout(timer);
+      if (killTimer) clearTimeout(killTimer);
+      process.off("SIGINT", forwardSig);
+      process.off("SIGTERM", forwardSig);
+      resolve({ code: -1, stdout, stderr: stderr + `\n${e.message}`, timedOut: false });
+    });
+
+    child.on("close", (code, signal) => {
+      clearTimeout(timer);
+      if (killTimer) clearTimeout(killTimer);
+      process.off("SIGINT", forwardSig);
+      process.off("SIGTERM", forwardSig);
+      resolve({
+        code: code ?? -1,
+        stdout,
+        stderr,
+        timedOut: timedOut || signal === "SIGTERM" || signal === "SIGKILL",
+      });
+    });
   });
-
-  if (onLog) {
-    if (r.stdout) onLog("stdout", r.stdout);
-    if (r.stderr) onLog("stderr", r.stderr);
-  }
-
-  return {
-    code: r.status ?? -1,
-    stdout: r.stdout || "",
-    stderr: r.stderr || "",
-    timedOut: r.error?.code === "ETIMEDOUT" || r.signal === "SIGTERM",
-  };
 }

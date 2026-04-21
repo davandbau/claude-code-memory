@@ -38,10 +38,17 @@ export async function runInbox(args) {
   }
 
   const firstArg = args[0];
+  // Treat firstArg as a file path only when the user is clearly pointing at one:
+  // single arg AND it looks path-like (contains a separator or extension) AND exists.
+  const looksLikePath =
+    args.length === 1 &&
+    firstArg !== "-" &&
+    (firstArg.includes("/") || firstArg.startsWith("~") || /\.\w{1,8}$/.test(firstArg));
+
   if (firstArg === "-") {
     content = await readStdin();
     source = "stdin";
-  } else if (fs.existsSync(firstArg)) {
+  } else if (looksLikePath && fs.existsSync(firstArg) && fs.statSync(firstArg).isFile()) {
     content = fs.readFileSync(firstArg, "utf8");
     source = path.basename(firstArg);
   } else {
@@ -54,7 +61,9 @@ export async function runInbox(args) {
     process.exit(2);
   }
 
-  const ts = new Date().toISOString().replace(/[:.]/g, "").slice(0, 15); // e.g. 20260421T071930
+  // Compact timestamp: YYYYMMDDTHHMMSS (seconds resolution). Collision-resistant
+  // enough for manual dumps; the maintenance pass is idempotent either way.
+  const ts = new Date().toISOString().replace(/[-:.]/g, "").replace(/Z$/, "").slice(0, 15);
   const baseSlug = source === "stdin" || source === "cli"
     ? slug(content.split("\n")[0] || "note")
     : slug(path.parse(source).name);
