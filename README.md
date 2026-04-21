@@ -46,7 +46,7 @@ Requires Node 20+ and git. macOS or Linux.
 npm install -g claude-code-memory
 ```
 
-Or from GitHub without npm:
+Or install directly from the GitHub repo (before a release is published to the npm registry):
 
 ```bash
 npm install -g github:davandbau/claude-code-memory
