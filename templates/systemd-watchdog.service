@@ -1,0 +1,15 @@
+[Unit]
+Description=claude-code-memory sync watchdog
+After=network-online.target
+
+[Service]
+Type=simple
+Environment=MEMORY_REPO={{REPO}}
+ExecStart={{NODE}} {{CCM_BIN}} watch
+Restart=always
+RestartSec=10
+StandardOutput=append:{{REPO}}/.logs/watchdog.stdout.log
+StandardError=append:{{REPO}}/.logs/watchdog.stderr.log
+
+[Install]
+WantedBy=default.target

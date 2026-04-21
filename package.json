@@ -1,0 +1,53 @@
+{
+  "name": "claude-code-memory",
+  "version": "0.1.0",
+  "description": "Persistent, git-synced memory for Claude Code. PARA-organized context loaded automatically on every session, shared across machines in near-real time.",
+  "type": "module",
+  "bin": {
+    "claude-code-memory": "./src/cli.js",
+    "ccm": "./src/cli.js"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "lint": "node --check src/cli.js && find src -name '*.js' -exec node --check {} +"
+  },
+  "files": [
+    "src",
+    "templates",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "keywords": [
+    "claude",
+    "claude-code",
+    "memory",
+    "para",
+    "hooks",
+    "git-sync",
+    "knowledge-management",
+    "second-brain",
+    "ai"
+  ],
+  "license": "MIT",
+  "author": "David Baum",
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/davandbau/claude-code-memory.git"
+  },
+  "bugs": {
+    "url": "https://github.com/davandbau/claude-code-memory/issues"
+  },
+  "homepage": "https://github.com/davandbau/claude-code-memory#readme",
+  "dependencies": {
+    "chokidar": "^3.6.0",
+    "picocolors": "^1.0.1"
+  },
+  "os": [
+    "darwin",
+    "linux"
+  ]
+}

@@ -1,0 +1,9 @@
+[Unit]
+Description=claude-code-memory pull
+
+[Service]
+Type=oneshot
+Environment=MEMORY_REPO={{REPO}}
+ExecStart={{NODE}} {{CCM_BIN}} pull
+StandardOutput=append:{{REPO}}/.logs/puller.stdout.log
+StandardError=append:{{REPO}}/.logs/puller.stderr.log
