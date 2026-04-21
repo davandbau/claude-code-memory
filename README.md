@@ -33,7 +33,7 @@ you need one shared memory loaded in every session, editable like any markdown r
 
 - **Watchdog**: a local daemon (`chokidar` + debounced git) commits and pushes within ~5s of any write.
 - **Puller**: a 60s timer (`launchd` on macOS, `systemd --user` on Linux) fetches remote changes.
-- **`SessionStart` hook**: injects `MEMORY.md`, `projects.md`, `user_profile.md`, and today's daily note as additional context on every new session.
+- **`SessionStart` hook**: injects `MEMORY.md`, `projects.md`, `areas.md`, `user_profile.md`, and the latest daily note as additional context on every new session.
 - **`UserPromptSubmit` hook**: throttled background pull + a one-line notice when the remote HEAD has moved mid-session.
 
 No runtime Anthropic API calls. All sync is git over SSH/HTTPS.
@@ -79,7 +79,10 @@ That's it. Next time you launch Claude Code, the memory is auto-loaded via the `
 | `ccm status`              | Show SHA, service state, hook registration, maintenance state, log tails |
 | `ccm sync`                | Force one pull+commit+push cycle                                        |
 | `ccm maintain`            | Run one autonomous maintenance pass (ingest inbox, compact, archive…)   |
+| `ccm maintain --dry-run`  | Preview what maintenance would do, without calling Claude or locking    |
+| `ccm maintain --force`    | Bypass the 20h throttle and the coordinator-host check                  |
 | `ccm maintain --install`  | Schedule a daily maintenance timer                                      |
+| `ccm maintain --uninstall`| Remove the daily maintenance timer                                      |
 | `ccm inbox <text\|file\|->` | Queue freeform content for the next maintenance pass                    |
 | `ccm uninstall`           | Stop services, remove hooks (data is left intact)                       |
 
@@ -103,13 +106,13 @@ The memory system organizes itself. On a schedule (default 03:17 local) or on de
 Every maintenance run writes one JSON line per action to `maintenance/ledger.jsonl`:
 
 ```jsonl
-{"v":1,"at":"2026-04-21T03:17:00Z","run":"20260421T0317-a1b2","action":"summarize_dailies","sources":["daily/2026-03-01.md",…],"target":"archive.md","target_heading":"## 2026-03 Daily Notes","rationale":"monthly rollup"}
+{"v":1,"at":"2026-04-21T03:17:00Z","run":"202604210317-a1b2","action":"summarize_dailies","sources":["daily/2026-03-01.md","…"],"target":"archive.md","target_heading":"## 2026-03 Daily Notes","rationale":"monthly rollup"}
 ```
 
 Run IDs map to git commits (`chore: memory maintenance (run <id>)`). To reconstruct any decision:
 
 ```bash
-commit=$(git log --grep "run 20260421T0317" -1 --format=%H)
+commit=$(git log --grep "run 202604210317" -1 --format=%H)
 git show $commit:maintenance/prompt.md   # what the prompt was
 git show $commit                          # exactly what changed
 git show $commit^:daily/2026-03-14.md    # an input at the time
@@ -151,6 +154,16 @@ ccm maintain --uninstall   # stops the daily timer
 
 or set `maintenance.enabled = false` in `.claude-memory.json`.
 
+### Queuing content for the next pass
+
+```bash
+ccm inbox "Feedback: prefer terse bullet lists over prose"   # inline text
+ccm inbox notes/meeting-2026-04-21.md                        # read a file
+echo "unstructured thought" | ccm inbox -                    # from stdin
+```
+
+`ccm inbox <arg>` treats a single argument as a file **only if** it looks path-like (contains `/`, starts with `~`, or has a file extension) **and** exists. Otherwise the argument is treated as text, so `ccm inbox README` won't accidentally slurp a `README` file in cwd — you'd need to write `ccm inbox ./README` for that.
+
 ## Repo layout (your memory repo)
 
 The `--empty` starter uses a [PARA](https://fortelabs.com/blog/para/)-inspired structure:
@@ -169,7 +182,7 @@ your-memory/
 └── reference_*.md      # pointers to external systems (dashboards, vaults…)
 ```
 
-The structure is **not enforced**. Tweak to taste. The SessionStart hook reads whatever files you list in `.claude-memory.json` (defaults: `MEMORY.md`, `projects.md`, `user_profile.md`, plus the latest daily note).
+The structure is **not enforced**. Tweak to taste. The SessionStart hook reads whatever files you list in `.claude-memory.json` (defaults: `MEMORY.md`, `projects.md`, `areas.md`, `user_profile.md`, plus the latest daily note).
 
 ## Config
 
@@ -181,7 +194,7 @@ Drop `.claude-memory.json` in your memory repo root to override defaults:
   "pullIntervalSeconds": 60,
   "debounceSeconds": 5,
   "sessionStart": {
-    "files": ["MEMORY.md", "projects.md", "user_profile.md"],
+    "files": ["MEMORY.md", "projects.md", "areas.md", "user_profile.md"],
     "includeLatestDailyNote": true,
     "dailyNoteDir": "daily"
   },
@@ -208,7 +221,7 @@ Yes. Each machine runs its own watchdog. Commits are tagged `[hostname]`. The wa
 Don't. The repo is plaintext on disk. Keep secrets in your password manager and reference them by name in memory files. See [resources.md starter](templates/starter/resources.md).
 
 **What about Windows?**
-v0.1 targets macOS (`launchd`) and Linux (`systemd --user`). Windows via WSL works. Native Windows (`schtasks` / Windows Service) is planned.
+v0.2 targets macOS (`launchd`) and Linux (`systemd --user`). Windows via WSL works. Native Windows (`schtasks` / Windows Service) is planned.
 
 **Can I use this without GitHub?**
 Yes — any git remote works (GitLab, self-hosted, Bitbucket). `ccm init <any-git-url>`.
