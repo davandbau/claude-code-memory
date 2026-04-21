@@ -11,7 +11,7 @@ Your notes, projects, preferences — in every session, across every machine. Ze
 ## Install
 
 ```bash
-npm install -g github:davandbau/paramem
+npm install -g paramem
 paramem init git@github.com:you/your-memory.git
 ```
 
